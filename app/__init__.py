@@ -1,0 +1,1 @@
+"""WatchAgent weather monitoring service."""

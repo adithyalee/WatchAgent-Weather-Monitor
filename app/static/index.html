@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WatchAgent — Canadian Weather Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #7d8590;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --blue: #58a6ff;
+      --orange: #e3b341;
+      --purple: #bc8cff;
+    }
+    *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', sans-serif;
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(8px);
+    }
+    .logo {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: -0.01em;
+    }
+    .logo-icon { font-size: 20px; }
+    .logo-accent { color: var(--blue); }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .live-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(63,185,80,0.1);
+      border: 1px solid rgba(63,185,80,0.25);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--green);
+      letter-spacing: 0.04em;
+    }
+    .pulse-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(1.4); }
+    }
+    .header-meta { font-size: 12px; color: var(--muted); }
+
+    /* ── Main ────────────────────────────────────────────────────────────── */
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* ── Health strip ────────────────────────────────────────────────────── */
+    .health-strip {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .chip strong { color: var(--text); font-weight: 600; }
+    .chip.status-ok strong { color: var(--green); }
+    .chip.status-err strong { color: var(--red); }
+
+    /* ── Section labels ──────────────────────────────────────────────────── */
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+    }
+
+    /* ── City cards ──────────────────────────────────────────────────────── */
+    .city-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .city-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s, transform 0.15s;
+    }
+    .city-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--city-color, var(--border));
+    }
+    .city-card:hover {
+      border-color: var(--city-color, var(--blue));
+      transform: translateY(-1px);
+    }
+    .city-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+    .city-name {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .city-wmo-icon { font-size: 32px; line-height: 1; }
+    .city-temp-row {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 4px;
+    }
+    .city-temp {
+      font-size: 52px;
+      font-weight: 300;
+      line-height: 1;
+      letter-spacing: -0.02em;
+    }
+    .city-unit { font-size: 20px; font-weight: 300; color: var(--muted); }
+    .city-feels { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+    .city-desc {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+    .city-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .city-stat {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .city-stat strong { color: var(--text); }
+    .top-alert-tag {
+      grid-column: 1 / -1;
+      font-size: 11px;
+      background: var(--surface2);
+      border-radius: 4px;
+      padding: 3px 7px;
+      color: var(--muted);
+      margin-top: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Temperature colour classes */
+    .tc-freeze  { color: #79c0ff; }
+    .tc-cold    { color: #a5d6ff; }
+    .tc-cool    { color: #56d364; }
+    .tc-mild    { color: var(--green); }
+    .tc-warm    { color: var(--orange); }
+    .tc-hot     { color: var(--red); }
+
+    /* ── Bottom panel ────────────────────────────────────────────────────── */
+    .bottom-panel {
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    /* ── Panel shell ─────────────────────────────────────────────────────── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .panel-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .count-badge {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1px 8px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── Events list ─────────────────────────────────────────────────────── */
+    .events-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 420px;
+      overflow-y: auto;
+    }
+    .events-list::-webkit-scrollbar { width: 4px; }
+    .events-list::-webkit-scrollbar-track { background: transparent; }
+    .events-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .event-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: var(--surface2);
+      border-left: 3px solid transparent;
+      transition: border-left-color 0.15s;
+    }
+    .event-row.sev-hi { border-left-color: var(--red); }
+    .event-row.sev-md { border-left-color: var(--yellow); }
+    .event-row.sev-lo { border-left-color: var(--green); }
+    .sev-pill {
+      flex-shrink: 0;
+      width: 38px; height: 38px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .sev-pill.hi { background: rgba(248,81,73,.12);  color: var(--red); }
+    .sev-pill.md { background: rgba(210,153,34,.12); color: var(--yellow); }
+    .sev-pill.lo { background: rgba(63,185,80,.12);  color: var(--green); }
+    .event-content { flex: 1; min-width: 0; }
+    .event-type-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .event-meta-line {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+    .event-description {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 32px 16px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .empty-state .empty-icon { font-size: 32px; margin-bottom: 8px; }
+
+    /* ── Chart ───────────────────────────────────────────────────────────── */
+    .chart-container { position: relative; height: 340px; }
+
+    /* ── Skeleton / loading ──────────────────────────────────────────────── */
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 6px;
+      height: 18px;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .skeleton-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* ── Responsive ──────────────────────────────────────────────────────── */
+    @media (max-width: 1100px) {
+      .bottom-panel { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 750px) {
+      .city-grid { grid-template-columns: 1fr; }
+      main { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <span class="logo-icon">⛈</span>
+    <span><span class="logo-accent">Watch</span>Agent Weather</span>
+  </div>
+  <div class="header-right">
+    <div class="live-badge"><div class="pulse-dot"></div>LIVE</div>
+    <div class="header-meta" id="refresh-label">Refreshing in 60s</div>
+    <div class="header-meta" id="updated-at"></div>
+  </div>
+</header>
+
+<!-- ── Main ────────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Health strip -->
+  <div class="health-strip" id="health-strip">
+    <div class="chip"><span>Status</span><strong id="h-status">—</strong></div>
+    <div class="chip"><span>Readings stored</span><strong id="h-readings">—</strong></div>
+    <div class="chip"><span>Events stored</span><strong id="h-events">—</strong></div>
+    <div class="chip"><span>Last poll</span><strong id="h-poll">—</strong></div>
+    <div class="chip"><span>DB size</span><strong id="h-dbsize">—</strong></div>
+  </div>
+
+  <!-- City cards -->
+  <div class="section-label">Current Conditions</div>
+  <div class="city-grid" id="city-grid">
+    <div class="skeleton-card"><div class="skeleton" style="width:60%;height:12px"></div><div class="skeleton" style="height:52px"></div><div class="skeleton" style="width:80%;height:14px"></div></div>
+    <div class="skeleton-card"><div class="skeleton" style="width:60%;height:12px"></div><div class="skeleton" style="height:52px"></div><div class="skeleton" style="width:80%;height:14px"></div></div>
+    <div class="skeleton-card"><div class="skeleton" style="width:60%;height:12px"></div><div class="skeleton" style="height:52px"></div><div class="skeleton" style="width:80%;height:14px"></div></div>
+  </div>
+
+  <!-- Bottom: events + chart -->
+  <div class="bottom-panel">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Recent Alerts</div>
+        <span class="count-badge" id="ev-count">—</span>
+      </div>
+      <div class="events-list" id="events-list">
+        <div class="empty-state">
+          <div class="empty-icon">🔄</div>
+          Loading events…
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Apparent Temperature History</div>
+        <span class="count-badge" id="readings-note">last 24 readings/city</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="chart"></canvas>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────
+const REFRESH_SEC = 60;
+const CITY_COLOR  = { Ottawa: '#f85149', Toronto: '#58a6ff', Vancouver: '#3fb950' };
+
+const WMO_DATA = {
+  0:['☀️','Clear sky'], 1:['🌤️','Mainly clear'], 2:['⛅','Partly cloudy'],
+  3:['☁️','Overcast'], 45:['🌫️','Foggy'], 48:['🌫️','Icy fog'],
+  51:['🌦️','Light drizzle'], 53:['🌦️','Drizzle'], 55:['🌧️','Heavy drizzle'],
+  61:['🌧️','Light rain'], 63:['🌧️','Rain'], 65:['🌧️','Heavy rain'],
+  71:['🌨️','Light snow'], 73:['❄️','Snow'], 75:['❄️','Heavy snow'],
+  77:['🌨️','Snow grains'], 80:['🌦️','Light showers'], 81:['🌦️','Showers'],
+  82:['⛈️','Heavy showers'], 85:['🌨️','Snow showers'], 86:['🌨️','Heavy snow showers'],
+  95:['⛈️','Thunderstorm'], 96:['⛈️','T-storm + hail'], 99:['⛈️','T-storm + hail'],
+};
+function wmo(code) { return WMO_DATA[code] || ['🌡️', `WMO ${code}`]; }
+
+function tempClass(t) {
+  if (t == null) return '';
+  if (t < -10)  return 'tc-freeze';
+  if (t <   0)  return 'tc-cold';
+  if (t <  10)  return 'tc-cool';
+  if (t <  20)  return 'tc-mild';
+  if (t <  28)  return 'tc-warm';
+  return 'tc-hot';
+}
+
+function sevTier(s) {
+  if (s >= 0.67) return ['hi','sev-hi'];
+  if (s >= 0.34) return ['md','sev-md'];
+  return ['lo','sev-lo'];
+}
+
+function relTime(iso) {
+  if (!iso) return '—';
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h/24)}d ago`;
+}
+
+function humanType(t) {
+  return (t || '').replace(/_/g,' ').toLowerCase()
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function f(n, d=1) {
+  if (n == null) return '—';
+  return Number(n).toFixed(d);
+}
+
+function fmtBytes(b) {
+  if (!b) return '0 B';
+  if (b < 1024) return `${b} B`;
+  if (b < 1048576) return `${(b/1024).toFixed(1)} KB`;
+  return `${(b/1048576).toFixed(2)} MB`;
+}
+
+// ── Chart setup ───────────────────────────────────────────────────────────
+let chart = null;
+
+function initChart() {
+  const ctx = document.getElementById('chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets: [] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            color: '#7d8590',
+            font: { size: 12 },
+            boxWidth: 12,
+            padding: 16,
+          },
+        },
+        tooltip: {
+          backgroundColor: '#161b22',
+          borderColor: '#30363d',
+          borderWidth: 1,
+          titleColor: '#e6edf3',
+          bodyColor: '#7d8590',
+          padding: 10,
+          callbacks: {
+            label: ctx => `  ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}°C`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: {
+            unit: 'hour',
+            displayFormats: { hour: 'HH:mm', day: 'MMM d' },
+            tooltipFormat: 'MMM d, HH:mm',
+          },
+          grid: { color: '#21262d' },
+          ticks: { color: '#7d8590', maxTicksLimit: 10, font: { size: 11 } },
+        },
+        y: {
+          grid: { color: '#21262d' },
+          ticks: {
+            color: '#7d8590',
+            font: { size: 11 },
+            callback: v => `${v}°C`,
+          },
+        },
+      },
+    },
+  });
+}
+
+function updateChart(readings) {
+  const byCity = {};
+  for (const r of readings) {
+    if (!byCity[r.city]) byCity[r.city] = [];
+    byCity[r.city].push({ x: new Date(r.timestamp), y: r.apparent_temperature });
+  }
+  chart.data.datasets = Object.entries(byCity).map(([city, pts]) => ({
+    label: city,
+    data: pts.sort((a, b) => a.x - b.x),
+    borderColor: CITY_COLOR[city] || '#aaa',
+    backgroundColor: (CITY_COLOR[city] || '#aaa') + '18',
+    borderWidth: 2,
+    pointRadius: 3,
+    pointHoverRadius: 6,
+    tension: 0.3,
+    fill: false,
+  }));
+  chart.update('none');
+}
+
+// ── Renderers ─────────────────────────────────────────────────────────────
+function renderHealth(h) {
+  const ok = h.status === 'ok';
+  const strip = document.getElementById('health-strip');
+  strip.querySelector('.chip').className = `chip ${ok ? 'status-ok' : 'status-err'}`;
+  document.getElementById('h-status').textContent  = ok ? '✓ Healthy' : '⚠ Degraded';
+  document.getElementById('h-readings').textContent = (h.readings_stored || 0).toLocaleString();
+  document.getElementById('h-events').textContent   = (h.events_stored || 0).toLocaleString();
+  document.getElementById('h-poll').textContent     = relTime(h.last_poll);
+  document.getElementById('h-dbsize').textContent   = fmtBytes(h.db_size_bytes);
+}
+
+function renderCities(stats) {
+  const grid = document.getElementById('city-grid');
+  grid.innerHTML = Object.entries(stats.cities || {}).map(([city, s]) => {
+    const color = CITY_COLOR[city] || '#aaa';
+    const [icon, desc] = wmo(s.latest_weather_code ?? 0);
+    const t = s.latest_temperature;
+    const af = s.latest_apparent_temperature;
+    const tc = tempClass(t);
+    const noData = t == null;
+
+    return `
+      <div class="city-card" style="--city-color:${color}">
+        <div class="city-top">
+          <span class="city-name">${city}</span>
+          <span class="city-wmo-icon">${icon}</span>
+        </div>
+        <div class="city-temp-row">
+          <span class="city-temp ${tc}">${noData ? '—' : f(t, 0)}</span>
+          <span class="city-unit">°C</span>
+        </div>
+        <div class="city-feels">Feels like ${noData ? '—' : f(af, 1)}°C</div>
+        <div class="city-desc">${desc}</div>
+        <div class="city-stats">
+          <div class="city-stat">💨 <strong>${f(s.latest_wind_speed, 0)} km/h</strong></div>
+          <div class="city-stat">📊 <strong>${s.readings_stored}</strong> readings</div>
+          <div class="city-stat">🚨 <strong>${s.events_stored}</strong> events</div>
+          ${s.most_frequent_event_type
+            ? `<div class="city-stat" style="grid-column:1/-1">
+                 <span class="top-alert-tag">Top alert: ${humanType(s.most_frequent_event_type)}</span>
+               </div>`
+            : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderEvents(events) {
+  document.getElementById('ev-count').textContent = events.length;
+  const list = document.getElementById('events-list');
+  if (!events.length) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div>No events yet — monitoring in progress.</div>`;
+    return;
+  }
+  list.innerHTML = events.map(e => {
+    const [pill, row] = sevTier(e.severity);
+    const city = e.city || 'National';
+    return `
+      <div class="event-row ${row}">
+        <div class="sev-pill ${pill}">${Math.round(e.severity * 100)}</div>
+        <div class="event-content">
+          <div class="event-type-label">${humanType(e.type)}</div>
+          <div class="event-meta-line">${city} · ${relTime(e.timestamp)}</div>
+          <div class="event-description">${e.description}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Data fetching ─────────────────────────────────────────────────────────
+async function fetchAll() {
+  try {
+    const [health, statsData, eventsData, readingsData] = await Promise.all([
+      fetch('/health').then(r => r.json()),
+      fetch('/stats').then(r => r.json()),
+      fetch('/events?limit=15').then(r => r.json()),
+      fetch('/readings?limit=72').then(r => r.json()),
+    ]);
+
+    renderHealth(health);
+    renderCities(statsData);
+    renderEvents(eventsData.events || []);
+    updateChart(readingsData.readings || []);
+
+    document.getElementById('updated-at').textContent =
+      'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch (err) {
+    console.error('Fetch error:', err);
+    document.getElementById('updated-at').textContent = '⚠ Error loading data';
+  }
+}
+
+// ── Countdown & auto-refresh ──────────────────────────────────────────────
+let countdown = REFRESH_SEC;
+setInterval(() => {
+  if (countdown <= 0) { countdown = REFRESH_SEC; fetchAll(); }
+  document.getElementById('refresh-label').textContent =
+    `Refreshing in ${countdown}s`;
+  countdown--;
+}, 1000);
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+initChart();
+fetchAll();
+</script>
+</body>
+</html>

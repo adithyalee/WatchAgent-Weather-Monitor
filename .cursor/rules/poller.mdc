@@ -1,0 +1,10 @@
+---
+description: Enforces httpx-only HTTP, exponential backoff (2–32s), IntegrityError-based deduplication, structured JSON logging fields, and SIGTERM graceful shutdown in the poller service
+globs: "app/poller.py"
+alwaysApply: false
+---
+Poller must use httpx.AsyncClient for all HTTP requests.  
+On any network or non-2xx error, implement exponential backoff (2,4,8,16,32s) with a maximum of 5 retries. Log a warning after the second retry; log an error after final failure.  
+Deduplication must rely on the unique constraint (city, timestamp). Use `session.add()` and catch `IntegrityError`, then rollback and skip.  
+Never use `print()`; use `logging.getLogger(__name__)` with structured JSON formatter.  
+The poller must be a stateless async loop that can be gracefully shut down with a SIGTERM signal.

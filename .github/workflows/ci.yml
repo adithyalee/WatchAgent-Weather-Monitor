@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare environment
+        run: cp .env.example .env
+      - name: Build Docker images
+        run: docker compose build
+      - name: Start services
+        run: docker compose up -d
+      - name: Wait for API health check
+        run: |
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:8000/health; then
+              echo "API is healthy"
+              exit 0
+            fi
+            echo "Waiting... ($i/15)"
+            sleep 2
+          done
+          echo "API did not become healthy in time"
+          docker compose logs
+          exit 1
+      - name: Tear down
+        if: always()
+        run: docker compose down

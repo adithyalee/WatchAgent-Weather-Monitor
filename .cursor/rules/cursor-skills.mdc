@@ -1,0 +1,25 @@
+---
+description: Enforces DATABASE_URL connection pattern, --format json|markdown output contract, main() guard, read-only constraint, and README Skills table sync for every script in .cursor/skills/
+globs: ".cursor/skills/**/*.py"
+alwaysApply: false
+---
+Every script in `.cursor/skills/` must be a standalone Python 3.11+ executable that connects to the database via the `DATABASE_URL` environment variable (defaulting to `sqlite+aiosqlite:///./data/weather.db`). Use `sqlite3` directly (sync) — skills do not need the async ORM stack.
+
+Database connection pattern all skills must follow:
+```python
+def _db_path() -> Path:
+    url = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./data/weather.db")
+    if url.startswith("sqlite+aiosqlite:///"):
+        return Path(url.removeprefix("sqlite+aiosqlite:///"))
+    raise SystemExit(f"Unsupported DATABASE_URL: {url}")
+```
+
+Every skill must accept `--format json|markdown` and produce structured output on stdout. JSON format must output a valid JSON object (use `json.dumps(payload, indent=2, default=str)`). Markdown format must use `#`/`##`/`-` headings. This contract lets Cursor parse skill output automatically.
+
+Every skill must have a `main()` function and a `if __name__ == "__main__": main()` guard so it runs standalone with `python .cursor/skills/<name>.py [args]`.
+
+Every skill must exit with code 0 on success and a non-zero code (via `raise SystemExit(message)`) when the database is not found or arguments are invalid. Never let an unhandled exception reach the user — catch expected errors and print a clear message.
+
+When a new skill is added, update the Cursor Setup → Skills table in `README.md` with: script name, one-line purpose, and an example invocation command. This keeps the documentation in sync with the actual skill set automatically.
+
+Skills must not modify database data — they are read-only analysis tools. Never execute INSERT, UPDATE, or DELETE in a skill script.

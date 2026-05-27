@@ -1,0 +1,16 @@
+---
+description: Enforces get_session dependency injection, Alembic-only schema changes, index-on-model declaration, JSON reading_ids rationale, expire_on_commit=False, and no commit inside detectors
+globs: "app/database.py", "app/models.py", "alembic/**/*.py"
+alwaysApply: false
+---
+Always obtain a session via the `get_session` async generator dependency; never construct `AsyncSession` directly in route handlers or detectors.
+
+All schema changes go through Alembic migrations in `alembic/versions/`. Never alter `Base.metadata` at runtime. Add `server_default` to any NOT NULL column added to an existing table so the migration succeeds on live data.
+
+Index strategy: time-series queries filter by `city` first. Indexes are declared as `index=True` on `mapped_column` or inside `__table_args__`; never added outside the model definition.
+
+`reading_ids` on `Event` is a JSON list of integer primary keys — not a foreign key. This is intentional: SQLite FK enforcement is off by default, and the JSON column keeps the schema simple while preserving the audit link.
+
+Use `expire_on_commit=False` on `async_sessionmaker` so ORM objects remain accessible after `await session.commit()` without triggering extra SELECT queries.
+
+Never call `session.commit()` inside a detector. Detectors only flush (via `session.add` + the caller's flush) and return Event objects; the poller is the single commit point for each poll cycle.

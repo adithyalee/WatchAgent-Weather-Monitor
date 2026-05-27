@@ -1,0 +1,11 @@
+---
+description: Enforces in-memory SQLite fixtures, mocked HTTP transports, parametrize structure with fires/does_not_fire/cooldown scenarios, and async test patterns across all test files
+globs: "tests/**/*.py"
+alwaysApply: false
+---
+All tests must use pytest and pytest-asyncio.  
+Never make real network calls; mock httpx.AsyncClient or use a custom transport.  
+Use in-memory SQLite databases for all tests (set `DATABASE_URL=sqlite+aiosqlite:///:memory:`).  
+For event detection tests, parametrize with `@pytest.mark.parametrize` and include at least the scenarios: fires, does_not_fire, cooldown.  
+API tests must use `fastapi.testclient.TestClient` with async backend.  
+Every test module must have a docstring explaining its purpose.

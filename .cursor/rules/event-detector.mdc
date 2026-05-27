@@ -1,0 +1,30 @@
+---
+description: Enforces the detector interface, city-threshold dict pattern, mandatory registry registration, cooldown call, and parametrized test coverage for all weather event detectors in app/detectors/
+globs: "app/detectors/**/*.py", "app/event_detector.py", "app/event_types.py", "tests/test_event_detection.py"
+alwaysApply: false
+---
+Every new detector must be placed in `app/detectors/` — one module per detector family (e.g., `storm.py` holds both `CompoundStormDetector` and `PrecipitationSurgeDetector`). Never add detector classes to the root `app/` directory.
+
+Every new detector must inherit from `BaseEventDetector` (or `_BaseSustainedSpellDetector` for spell variants), declare `event_type: EventType` and `cooldown: timedelta | None` as class-level attributes, and implement `async def evaluate(self, reading: Reading, session: AsyncSession) -> Event | None`.
+
+After creating a new detector, you must: (1) add the import and a new instance to `EVENT_DETECTORS` in `app/detectors/registry.py`; (2) export the class from `app/detectors/__init__.py`. If either step is missing, the detector will never run.
+
+City-specific thresholds must be defined as module-level dicts (e.g., `CITY_STORM_CONFIG`, `CITY_RAPID_CHANGE_CONFIG`) with a key for every city in `CITIES = ("Ottawa", "Toronto", "Vancouver")`. Never hardcode per-city values inside `evaluate()` — the dict pattern makes city configs auditable and testable.
+
+Every `Event` must include a `severity` float (0.0–1.0) computed from the trigger magnitude. Scale guidelines by detector family:
+- Anomaly: `min(sigma/4.0, 1.0)`
+- Rapid change: `min(max(ΔT/8, ΔW/50), 1.0)`
+- Compound storm: `min((W/100 + P/20)/2, 1.0)`
+- Spell (heat/cold): `min(consecutive/8.0, 1.0)`
+- Precipitation surge: `min(P / (2 × threshold), 1.0)`
+- National contrast: `min(spread/40.0, 1.0)`
+
+Detectors must never make HTTP calls. They read only from the passed `AsyncSession` and `Reading` object. No `import httpx` in any detector module.
+
+Always use `EventType` enum values for `Event.type` assignments via `self.event_type.value`. Never hardcode type strings like `"RAPID_CHANGE"` directly.
+
+Always call `await self._is_in_cooldown(reading.city, session, reading.timestamp)` before constructing an `Event`. Return `None` if in cooldown. The cooldown window is defined by `self.cooldown` and scoped per city (or globally when `self.global_cooldown = True`).
+
+Never call `session.commit()` or `session.flush()` inside a detector. Detectors only `session.add(event)` via the caller; the poller (`app/poller.py:store_reading`) is the single commit point for each poll cycle.
+
+All detectors must have parametrized pytest tests in `tests/test_event_detection.py` covering: `fires`, `does_not_fire`, and `cooldown_respected`. City-specific detectors also require at least one boundary test per city (threshold+0.1 fires, threshold−0.1 does not). Use `@pytest.mark.parametrize` — do not write separate test functions for each scenario.

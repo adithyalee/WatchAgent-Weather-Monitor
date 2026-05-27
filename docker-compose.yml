@@ -1,0 +1,40 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:///./data/weather.db
+      POLL_INTERVAL_SECONDS: 3600
+      OPEN_METEO_BASE_URL: https://api.open-meteo.com
+      LOG_LEVEL: INFO
+    volumes:
+      - weather_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  poller:
+    build:
+      context: .
+      dockerfile: Dockerfile.poller
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:///./data/weather.db
+      POLL_INTERVAL_SECONDS: 3600
+      OPEN_METEO_BASE_URL: https://api.open-meteo.com
+      LOG_LEVEL: INFO
+    volumes:
+      - weather_data:/app/data
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  weather_data:
