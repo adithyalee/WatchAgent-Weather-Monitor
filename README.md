@@ -314,7 +314,7 @@ python .cursor/skills/event_replay.py --fresh --limit 500 --format markdown
 python .cursor/skills/event_replay.py --since 2026-05-01T00:00:00 --format json
 ```
 
-**`dedup_scanner.py`** — Data quality audit. Scans for: hourly duplicate readings (deduplication failures), large gaps between consecutive readings per city (polling outages), late-fetch anomalies where `fetched_at` is more than 2 hours behind `timestamp` (clock drift or backfill), and orphaned `reading_ids` references in events. The output is a structured dict with an `anomalies_found` count at the top — zero is the expected healthy state.
+**`dedup_scanner.py`** — Data quality audit. Scans for: hourly duplicate readings (deduplication failures), large gaps between consecutive readings per city (polling outages), late-fetch anomalies where `fetched_at` is more than 2 hours after `timestamp` (clock drift or delayed backfill), and orphaned `reading_ids` references in events. The output is a structured dict with an `anomalies_found` count at the top — zero is the expected healthy state.
 
 ```bash
 python .cursor/skills/dedup_scanner.py --days 14 --format markdown
